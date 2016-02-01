@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Terrain generator test</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #ffffff;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+				font-weight: bold;
+
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+
+				color: #ffffff;
+			}
+
+			#oldie a { color:#da0 }
+		</style>
+	</head>
+	<body>
+
+		<div id="container"></div>
+		
+		<script src="perlin.js"></script>
+		<script src="build/three.min.js"></script>
+
+		<script src="js/controls/FirstPersonControls.js"></script>
+
+		<script src="js/shaders/ConvolutionShader.js"></script>
+		<script src="js/shaders/CopyShader.js"></script>
+		<script src="js/shaders/FilmShader.js"></script>
+
+		<script src="js/postprocessing/EffectComposer.js"></script>
+		<script src="js/postprocessing/ShaderPass.js"></script>
+		<script src="js/postprocessing/MaskPass.js"></script>
+		<script src="js/postprocessing/RenderPass.js"></script>
+		<script src="js/postprocessing/BloomPass.js"></script>
+		<script src="js/postprocessing/FilmPass.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+		<script id="fragmentShader" type="x-shader/x-fragment">
+			#define range 0.05
+			#define length 1.0
+
+			uniform sampler2D texture1; //snow
+			uniform sampler2D texture2; //grass
+			uniform sampler2D texture3; //dirt
+			uniform sampler2D texture4; //rocks
+
+			varying vec2 vUv;
+			varying vec3 vColor;
+			varying float fogIntensity;
+			varying float reflection;
+			
+			float rangeFactor(float t, float _point, float _range){
+				return max(0.0, 1.0-(abs (_point - t) / _range));
+			}
+
+			float areaRangeFactor(float t, float _min, float _max, float _range){
+				if(t>_min && t<_max)
+					return 1.0;
+				else
+				{
+					if(t<=_min)
+						return rangeFactor(t, _min, _range);
+					if(t>=_max)
+						return rangeFactor(t, _max, _range);
+						
+					return 0.0;
+				}
+			}
+
+			void main( void ) {
+				float heightMap = vColor.x;
+				vec4 tex1 = texture2D( texture1, vUv )*rangeFactor(heightMap, 0.0, 1.0);
+				vec4 tex2 = texture2D( texture2, vUv )*rangeFactor(heightMap, 1.0, 1.0);
+				//vec4 tex3 = texture2D( texture3, vUv )*areaRangeFactor(heightMap, 0.66*length, 1.0*length, range);
+				vec4 tex4 = texture2D( texture4, vUv );
+
+				float delta = abs(vColor.y);
+				vec4 color = tex4*delta+(tex1+tex2)*(1.0-delta);
+				
+				gl_FragColor = (color*0.5*(1.0-fogIntensity)+tex1*(fogIntensity)+reflection*tex2)*1.33;
+			}
+		</script>
+
+		<script id="vertexShader" type="x-shader/x-vertex">
+			#define lightDir vec4(1.0,0.0,0.0,0.0)
+			varying vec2 vUv;
+			varying vec3 vColor;
+			varying float fogIntensity;
+			varying float reflection;
+			uniform vec3 cameraPos;
+
+
+			void main()
+			{
+				vUv = uv*5.0;
+				vColor = color;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+				fogIntensity = vColor.z;
+
+				reflection = vColor.y;
+				
+				gl_Position = projectionMatrix * mvPosition;
+
+			}
+		</script>
+
+		<script>
+
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			var container, stats;
+
+			var clock = new THREE.Clock();
+
+			var camera, scene, renderer, composer, controls;
+
+			var worldWidth = 256, worldDepth = 256,
+			worldHalfWidth = worldWidth / 2, worldHalfDepth = worldDepth / 2;
+
+			var uniforms, material;
+
+			var mouseX = 0, mouseY = 0,
+			lat = 0, lon = 0, phy = 0, theta = 0;
+
+			var width = window.innerWidth || 2;
+			var height = window.innerHeight || 2;
+
+			var windowHalfX = width / 2;
+			var windowHalfY = height / 2;
+
+			var ready = false;
+			var blocsMap = {}
+			var lastPosId = "";
+
+			init();
+			animate();
+
+			function init() {
+
+				container = document.getElementById( 'container' );
+
+				camera = new THREE.PerspectiveCamera( 45, windowHalfX / windowHalfY, 1, 30000 );
+				camera.position.z = -500;
+
+				controls = new THREE.FirstPersonControls( camera );
+				controls.movementSpeed = 1000;
+				controls.lookSpeed = 0.1;
+
+				scene = new THREE.Scene();
+				scene.fog = new THREE.FogExp2( 0xefd1b5, 0.0025 );
+
+				noise.seed(Math.random());
+
+				var textureLoader0 = new THREE.TextureLoader();
+				textureLoader0.load("textures/grass.jpg", function(tex0){
+				
+					var textureLoader = new THREE.TextureLoader();
+					textureLoader.load("textures/dirt.jpg", function(tex){
+
+						var textureLoader1 = new THREE.TextureLoader();
+						textureLoader1.load("textures/rock.jpg", function(tex1){
+						
+							uniforms = {
+								cameraPos: { type:"3f", value:camera.position},
+
+								texture1: { type: "t", value: tex1 },
+								texture2: { type: "t", value: tex1 },
+								texture3: { type: "t", value: tex  },
+								texture4: { type: "t", value: tex0 }
+							};
+
+							uniforms.texture1.value.wrapS = uniforms.texture1.value.wrapT = THREE.RepeatWrapping;
+							uniforms.texture2.value.wrapS = uniforms.texture2.value.wrapT = THREE.RepeatWrapping;
+							uniforms.texture3.value.wrapS = uniforms.texture3.value.wrapT = THREE.RepeatWrapping;
+							uniforms.texture4.value.wrapS = uniforms.texture4.value.wrapT = THREE.RepeatWrapping;
+
+							material = new THREE.ShaderMaterial( {
+									vertexColors: THREE.VertexColors,
+									uniforms: uniforms,
+									vertexShader: document.getElementById( 'vertexShader' ).textContent,
+									fragmentShader: document.getElementById( 'fragmentShader' ).textContent
+
+							} );
+
+
+							renderer = new THREE.WebGLRenderer( { antialias: true } );
+							renderer.setClearColor( 0x000000 );
+							renderer.setPixelRatio( window.devicePixelRatio );
+							renderer.setSize( window.innerWidth, window.innerHeight );
+							container.appendChild( renderer.domElement );
+							
+							
+							onWindowResize();
+
+							window.addEventListener( 'resize', onWindowResize, false );
+
+							ready = true;
+
+						});
+					});
+				});
+			}
+
+			function onWindowResize( event ) {
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				controls.handleResize();
+
+			}
+
+			//
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+
+			}
+
+			function render() {
+					
+				controls.update( clock.getDelta() );
+				
+				//uniforms.time.value += 0.2 * delta;
+
+				//mesh.rotation.y += 0.0125 * delta;
+				//mesh.rotation.x += 0.05 * delta;
+
+				updateBlocs();
+
+				renderer.render( scene, camera );	
+			}
+
+			function updateBlocs()
+			{
+					if(!ready)
+					{
+						console.log("loading assets...");
+						return;
+					}	
+
+					var step = 50;
+					var generationRange = 6;
+
+					var camPosId = getId(camera.position, step);
+
+					for(var x=-generationRange; x<=generationRange; x++)
+					{
+						for(var y=-generationRange; y<=generationRange; y++)
+						{
+							var flatPos = flatten(new THREE.Vector3(x*step, 0, y*step).add(camera.position), step);
+							flatPos.y = 0;
+							var posId = getId(flatPos, step)
+							if(!blocsMap[posId])
+							{
+								blocsMap[posId] = generateBloc(flatPos);
+								break;
+							}
+						}		
+					}
+
+					clearBlocs();
+			}
+
+			function clearBlocs()
+			{
+				var destroyRange = 1000;
+				for(var objectsID in blocsMap)
+				{
+					var groundCamera = new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z);
+					groundCamera.y = 0;
+
+					var distance = blocsMap[objectsID].position.distanceTo(groundCamera);
+					if(distance>destroyRange)
+					{
+						scene.remove( blocsMap[objectsID] );
+						delete blocsMap[objectsID];
+					}
+				}
+			}
+
+			function generateBloc(position)
+			{
+					var geometry = new THREE.PlaneGeometry( 50, 50, 10, 10);
+					geometry.rotateX(  - Math.PI / 2 );
+
+					var faceIndices = [ 'a', 'b', 'c' ];
+
+					for ( var f in  geometry.faces) {
+
+						geometry.faces[f].normal =  new THREE.Vector3( 0, 1, 0 );
+
+						for(var strI in faceIndices)	{
+							var i = geometry.faces[f][faceIndices[strI]];
+							var noiseV = getNoise((geometry.vertices[i].x+position.x)/100, (geometry.vertices[i].y+position.y)/100, (geometry.vertices[i].z+position.z)/100);
+							var noiseWithOffset = getNoise((geometry.vertices[i].x+position.x+10)/100, (geometry.vertices[i].y+position.y)/100, (geometry.vertices[i].z+position.z)/100);
+							
+							var randomness = noise.simplex3((geometry.vertices[i].x+position.x)/10, (geometry.vertices[i].y+position.y)/10, (geometry.vertices[i].z+position.z)/10)*noiseV;
+							var randomness2 = getLowScaleNoise((geometry.vertices[i].x+position.x)/100, (geometry.vertices[i].y+position.y)/100, (geometry.vertices[i].z+position.z)/100);
+							
+							var delta = Math.pow(Math.min(1, Math.abs(noiseWithOffset - noiseV)*100), 2);
+							//geometry.vertices[i].x *= 1+noiseV/100;
+							geometry.vertices[i].y = noiseV*200;
+							//geometry.vertices[i].z *= 1+noiseV/100;
+							geometry.faces[f].vertexColors[0] = new THREE.Color(Math.abs(noiseV), delta, randomness2);
+							geometry.faces[f].vertexColors[1] = new THREE.Color(Math.abs(noiseV), delta, randomness2);
+							geometry.faces[f].vertexColors[2] = new THREE.Color(Math.abs(noiseV), delta, randomness2);
+						}
+					}
+
+					var mesh = new THREE.Mesh( geometry, material );
+					mesh.position.x = position.x;
+					mesh.position.y = position.y;
+					mesh.position.z = position.z;
+					
+					scene.add( mesh );
+
+					return mesh;
+			}
+
+			function getNoise(x,y,z)
+			{
+				return noise.simplex3(x, y, z)*noise.simplex3(x/10, y/10, z/10);
+			}
+
+			function getLowScaleNoise(x,y,z)
+			{
+				return noise.simplex3(x/10, y/10, z/10);
+			}
+
+			function getId(vec, step)
+			{
+				return Math.floor(vec.x/step)*step+" "+Math.floor(vec.y/step)*step+" "+Math.floor(vec.z/step)*step;
+			}
+
+			function flatten(vec, step)
+			{
+				return new THREE.Vector3(Math.floor(vec.x/step)*step, Math.floor(vec.y/step)*step, Math.floor(vec.z/step)*step);
+			}
+		</script>
+
+	</body>
+</html>
