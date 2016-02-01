@@ -115,9 +115,9 @@
 				vColor = color;
 				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
 
-				fogIntensity = 0;
+				fogIntensity = 0.0;
 
-				reflection = 0;
+				reflection = 0.0;
 				
 				gl_Position = projectionMatrix * mvPosition;
 
