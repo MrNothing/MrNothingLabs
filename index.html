@@ -96,7 +96,7 @@
 				float delta = abs(vColor.y);
 				vec4 color = tex4*delta+(tex1+tex2)*(1.0-delta);
 				
-				gl_FragColor = (color*0.5*(1.0-fogIntensity)+tex1*(fogIntensity)+reflection*tex2)*1.33;
+				gl_FragColor = (color*0.5*(1.0-vColor.z)+tex1*(vColor.z)+vColor.y*tex2)*1.33;
 			}
 		</script>
 
@@ -115,9 +115,9 @@
 				vColor = color;
 				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
 
-				fogIntensity = vColor.z;
+				fogIntensity = 0;
 
-				reflection = vColor.y;
+				reflection = 0;
 				
 				gl_Position = projectionMatrix * mvPosition;
 
