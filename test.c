@@ -31,8 +31,11 @@ int main(int argc, char * argv[])
     putdb("testkey", "value1");
 	
 	char* val = getdb("testkey");
-    printf("testkey %s", val);
+    printf("testkey %s\n", val);
 	free(val);
+	
+	int status = checkdb("testkey"));
+	printf("status %i\n", status);
 }
 
 
