@@ -34,7 +34,7 @@ int main(int argc, char * argv[])
     printf("testkey %s\n", val);
 	free(val);
 	
-	int status = checkdb("testkey"));
+	int status = checkdb("testkey");
 	printf("status %i\n", status);
 }
 
