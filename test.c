@@ -36,6 +36,8 @@ int main(int argc, char * argv[])
 	
 	int status = checkdb("testkey");
 	printf("status %i\n", status);
+	status = checkdb("falsekey");
+	printf("status %i\n", status);
 }
 
 
